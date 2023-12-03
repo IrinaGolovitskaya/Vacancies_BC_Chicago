@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>title</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css"
+        integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous" />
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
+        integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
+        <script src="https://unpkg.com/@turf/turf@latest/turf.min.js"></script>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,800;1,800&display=swap"
+        rel="stylesheet" />
+    <link href="css/styles.css" rel="stylesheet" />
+    <style>
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <header class="row bg-dark text-white p-2">
+            <div class="col-8">
+                <h1>Commercial vacancies in Belmont Cragin, updated</h1>
+            </div>
+            <div class="col-4 align-self-center">
+                <p class="d-flex justify-content-end my-auto">
+                    <a class="btn btn-primary" data-bs-toggle="offcanvas" href="#offcanvasExample" role="button"
+                        aria-controls="offcanvasExample">
+                        Map Info
+                    </a>
+                </p>
+            </div>
+        </header>
+
+        <section class="row">
+            <div class="p-0">
+                <div id="map"></div>
+            </div>
+        </section>
+
+        <footer class="row bg-dark text-white p-2">
+            <p class="text-center"></p>
+        </footer>
+    </div>
+
+    <div class="offcanvas offcanvas-start bg-dark text-white" tabindex="-1" id="offcanvasExample"
+        aria-labelledby="offcanvasExampleLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="offcanvasExampleLabel">Vacancy and ownership in US</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            <h3 class="py-2">Housing vacancy</h3>
+            <p>
+                The social fabric of city neighborhoods can be changed dramatically due to vacancies. It can also be
+                preceived
+                less stable, if the rate of rentals becomes "too high". The map shows the rate of vacant and occupied
+                housing per county in the US.
+            <aside></aside>
+            </p>
+            <hr />
+            <ul class="list-unstyled">
+                <li>authored by <a href="#">Irina Golovitskaya</a></li>
+                <li>Date of authored map: 03/24/2023</li>
+                <li>data source: <a href="https://api.census.gov/data/2020/acs/acs5/profile/variables.html">US
+                        Census</a></li>
+                <li>other sources: <a href="https://colorbrewer2.org/#type=sequential&scheme=Purples&n=5">Color
+                        brewer</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- legend is outside of container-fluid and will be dynamically added to map -->
+    <div class="legend d-flex flex-column px-3 py-2" id="legend"></div>
+
+    <!-- ui is outside of container-fluid and will be dynamically added to map -->
+    <div class="form-group me-3 mt-3" id="dropdown-ui">
+        <select class="form-control bg-primary text-white">
+            <option value="acs_VACANT" selected>vacant</option>
+            <option value="acs_OCCUPIED">occupied</option>
+            <option value="acs_OWNER">occupied by the owner</option>
+        </select>
+    </div>
+
+    <!-- Add Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4"
+        crossorigin="anonymous"></script>
+    <!-- then Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"
+        integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
+        <script src="https://unpkg.com/@turf/turf@latest/turf.min.js"></script>
+    <!-- then Simple Statistics -->
+    <script src="https://unpkg.com/simple-statistics@7.8.3/dist/simple-statistics.min.js"></script>
+    <script>
+        // Add footer date
+        setDate()
+
+        // set global variables for header, map container, and footer
+        const header = document.querySelector("header");
+        const mapContainer = document.querySelector("#map");
+        const footer = document.querySelector("footer");
+
+        // set map height to fill window
+        mapContainer.style.height =
+            window.innerHeight - header.offsetHeight - footer.offsetHeight + "px";
+
+        // initial Leaflet map options
+        const options = {
+            zoomSnap: 0.1,
+            center: [41.94, -87.768],
+            zoom: 15,
+            zoomControl: true,
+        };
+        // create Leaflet map and apply options
+        const map = L.map("map", options);
+        new L.control.zoom({ position: "bottomright" }).addTo(map);
+
+        // create Leaflet panes for ordering map layers
+        setPanes = ["bottom", "middle", "top"];
+        setPanes.forEach((pane, i) => {
+            map.createPane(pane);
+            map.getPane(pane).style.zIndex = 401 + i;
+        });
+
+        // request a basemap tile layer with no labels and add to the map
+        // or dark_nolabels
+        L.tileLayer(
+            "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+            {
+                attribution:
+                    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            }
+        ).addTo(map);
+
+        // request a basemap tile layer with labels and add to the map but in a higher pane
+        // or dark_only_labels
+        L.tileLayer(
+            "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+            {
+                attribution:
+                    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                pane: "top",
+            }
+        ).addTo(map);
+
+        // request a basemap tile layer and add to the map
+        // L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        //     attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+        //     maxZoom: 16
+        // }).addTo(map);
+
+
+
+        // Specify the path to your GeoJSON file
+        const geojsonFile = 'data/VacantStorefrontsBC.geojson';
+
+        // Fetch the GeoJSON file
+        fetch(geojsonFile)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch GeoJSON: ${response.status} ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Now 'data' contains your GeoJSON data
+                console.log(data);
+
+                L.geoJSON(data, {
+                    onEachFeature: function (feature, layer) {
+                        // Log the properties to the console
+                        console.log('Feature Properties:', feature.properties);
+
+                        // Customize the popup content
+                        layer.bindPopup(feature.properties.address);
+
+                        // on mouseover layer
+                        layer.on("mouseover", function () {
+                            // Log the feature properties to the console
+                            console.log('Mouseover Feature Properties:', feature.properties);
+
+                            // // change the stroke color and bring that element to the front
+                            // layer.setStyle({
+                            //     color: "#ff6e00",
+                            // }).bringToFront();
+
+                            let popupInfo = `<b>${feature.properties.Address}</b></br>
+                            <b>${feature.properties["Contact In"]}</b></br>
+                            <b>${feature.properties["Square Ft."]}</b></br>
+                            <b>${feature.properties["Former use"]}</b></br>
+                            <b>${feature.properties.Parking}</b></br>
+                            <b>${feature.properties.Notes}</b></br>`;
+
+                            // bind a tooltip to layer with county-specific information
+                            layer.bindTooltip(popupInfo, {
+                                // sticky property so tooltip follows the mouse
+                                sticky: true,
+                            });
+                        });
+
+                        // on mousing off layer
+                        layer.on("mouseout", function () {
+                            // Reset the layer style to its original stroke color
+                            // layer.setStyle({
+                            //     color: "#20282e",
+                            // });
+                        });
+
+
+
+                        for (var i = 0; i < feature.properties.length; i++) {
+                        
+                        var pointsGeoJSON = feature.geometry.coordinates[i]
+
+        // Calculate isochrones for each point
+        pointsGeoJSON.features.forEach(point => {
+            var isochrone = turf.isochrone(point, 60, { units: 'minutes' });
+            L.geoJSON(isochrone).addTo(map);
+        });
+
+    }
+
+
+
+
+                    }
+                }).addTo(map);
+
+
+            })
+            .catch(error => {
+                console.error('Error fetching GeoJSON:', error);
+            });
+
+
+
+        // set global variables for map layer,
+        // mapped attribute, and normalizing attribute
+        let attributeValue = "acs_VACANT";
+        const normValue = "acs_TOTAL";
+
+        const labels = {
+            "acs_VACANT": "Vacant housing",
+            "acs_OCCUPIED": "Occupied housing",
+            "acs_OWNER": "Occupied by owner housing"
+        }
+
+        // fetch data
+        fetch("data/acs.geojson")
+            // after it is returned...
+            .then(function (response) {
+                // Parse the JSON into a useable format, then return it
+                return response.json();
+            })
+            // The returned response is now data in a new then method
+            .then(function (data) {
+                // This is the JSON from our response
+                console.log(data);
+
+                drawMap(data);
+
+                return fetch("https://newmapsplus.github.io/assets/data/us_states_20m.geojson")
+            })
+            .then(function (response) {
+                return response.json()
+            })
+            .then(function (data) {
+                drawAnotherLayer(data)
+            })
+            // If there is an error, log it to the console
+            .catch(function (error) {
+                console.log(error);
+            });
+
+        // Example of keeping your page fresh
+        function setDate() {
+            const date = new Date();
+            const year = date.getFullYear();
+            const month = date.toLocaleString('default', { month: 'long' });
+            const footerText = document.querySelector("footer p");
+            footerText.innerHTML = `${month}, ${year} | New Maps Plus`;
+        }
+
+        function drawMap(data) {
+            const counties = L.geoJson(data, {
+                // style counties with initial default path options
+                style: function (feature) {
+                    return {
+                        color: "#20282e",
+                        weight: 0.4,
+                        fillOpacity: 1,
+                        fillColor: "#1f78b4",
+                    };
+                },
+                // add hover/touch functionality to each feature layer
+                onEachFeature: function (feature, layer) {
+                    // when mousing over a layer
+                    layer.on("mouseover", function () {
+                        // change the stroke color and bring that element to the front
+                        layer
+                            .setStyle({
+                                color: "#ff6e00",
+                            })
+                            .bringToFront();
+                    });
+
+                    // on mousing off layer
+                    layer.on("mouseout", function () {
+                        // reset the layer style to its original stroke color
+                        layer.setStyle({
+                            color: "#20282e",
+                        });
+                    });
+                },
+                pane: "bottom",
+            }).addTo(map);
+
+
+
+            // map.fitBounds(counties.getBounds(), {
+            //     padding: [18, 18], // add padding around counties
+            //     animation: false, // disable animating the zoom
+            // });
+
+            updateMap(counties);
+
+            addUi(counties);
+            addLegend();
+
+        }
+
+        function drawAnotherLayer(data) {
+            L.geoJson(data, {
+                style: function (feature) {
+                    return {
+                        color: "#222",
+                        // Make line weight larger than the county outline
+                        weight: 1,
+                        fillOpacity: 0,
+                        // This property allows us control interactivity of layer
+                        interactive: false,
+                    };
+                },
+                pane: "middle",
+            }).addTo(map)
+        }
+
+        function updateMap(counties) {
+            // you could log counties to console here to
+            // verify the Leaflet layers object is not accessible
+            // and scoped within this function
+            console.log(counties);
+
+            // get the class breaks for the current data attribute
+            const breaks = getClassBreaks(counties);
+
+            // loop through each county layer to update the color and tooltip info
+            counties.eachLayer(function (layer) {
+                const props = layer.feature.properties;
+
+                // set the fill color of layer based on its normalized data value
+                layer.setStyle({
+                    fillColor: getColor(props[attributeValue] / props[normValue], breaks),
+                });
+
+                // assemble string sequence of info for tooltip (end line break with + operator)
+                let tooltipInfo = `<b>${props["NAME"]} County</b></br>
+                    ${((props[attributeValue] / props[normValue]) * 100).toLocaleString()}%`;
+
+                // bind a tooltip to layer with county-specific information
+                layer.bindTooltip(tooltipInfo, {
+                    // sticky property so tooltip follows the mouse
+                    sticky: true,
+                });
+            });
+
+            // update the legend with the current data attribute information
+            updateLegend(breaks);
+        }
+
+        function getClassBreaks(counties) {
+            // create empty Array for storing values
+            const values = [];
+
+            // loop through all the counties
+            counties.eachLayer(function (layer) {
+                const a = layer.feature.properties[attributeValue];
+                const n = layer.feature.properties[normValue];
+                if (n != 0 && a != null && n != null) {
+                    let value =
+                        layer.feature.properties[attributeValue] /
+                        layer.feature.properties[normValue];
+                    values.push(value); // push the normalized value for each layer into the Array
+                }
+
+            });
+
+            // determine similar clusters
+            const clusters = ss.ckmeans(values, 5);
+
+            // create an array of the lowest value within each cluster
+            const breaks = clusters.map(function (cluster) {
+                return [cluster[0], cluster.pop()];
+            });
+
+            //return array of arrays, e.g., [[0.24,0.25], [0.26, 0.37], etc]
+            return breaks;
+        }
+
+        // Get color of county
+        function getColor(d, breaks) {
+            // function accepts a single normalized data attribute value
+            // and uses a series of conditional statements to determine which
+            // which color value to return to return to the function caller
+
+            if (d <= breaks[0][1]) {
+                return "#f2f0f7";
+            } else if (d <= breaks[1][1]) {
+                return "#cbc9e2";
+            } else if (d <= breaks[2][1]) {
+                return "#9e9ac8";
+            } else if (d <= breaks[3][1]) {
+                return "#756bb1";
+            } else if (d <= breaks[4][1]) {
+                return "#54278f";
+            }
+        }
+
+        // Add legend to map
+        function addLegend() {
+            // create a new Leaflet control object, and position it top left
+            const legendControl = L.control({ position: "topleft" });
+
+            // when the legend is added to the map
+            legendControl.onAdd = function () {
+                // select a div element with an id attribute of legend
+                const legend = L.DomUtil.get("legend");
+
+                // disable scroll and click/touch on map when on legend
+                L.DomEvent.disableScrollPropagation(legend);
+                L.DomEvent.disableClickPropagation(legend);
+
+                // return the selection to the method
+                return legend;
+            };
+
+            // add the empty legend div to the map
+            legendControl.addTo(map);
+
+
+        }
+
+        function updateLegend(breaks) {
+            // select the legend, add a title, begin an unordered list and assign to a variable
+            const legend = document.querySelector("#legend")
+            legend.innerHTML = `<h5>${labels[attributeValue]}</h5>`;
+
+            // loop through the Array of classification break values
+            for (let i = 0; i <= breaks.length - 1; i++) {
+                let color = getColor(breaks[i][0], breaks);
+
+                legend.innerHTML +=
+                    `<div class="d-flex flex-row justify-content-start">
+          <span style="background:${color}"></span>
+          <label>${(breaks[i][0] * 100).toFixed(1)} &mdash; 
+          ${(breaks[i][1] * 100).toFixed(1)}%</label>
+      </div>`
+            }
+        }
+
+        function addUi(counties) {
+            // create the slider control
+            var selectControl = L.control({ position: "topright" });
+
+            // when control is added
+            selectControl.onAdd = function () {
+                // get the element with id attribute of ui-controls
+                return L.DomUtil.get("dropdown-ui");
+            };
+            // add the control to the map
+            selectControl.addTo(map);
+
+            const dropdown = document.querySelector('#dropdown-ui select')
+            dropdown.addEventListener('change', function (e) {
+                // get the value of the selected option
+                attributeValue = e.target.value;
+
+                // update the map
+                updateMap(counties);
+            });
+        }
+
+    </script>
+</body>
+
+</html>
